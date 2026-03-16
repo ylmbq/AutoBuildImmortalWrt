@@ -524,10 +524,13 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: false
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - name: Set executable permissions
         run: |
@@ -538,8 +541,6 @@ jobs:
           mkdir -p "${{ github.workspace }}/custom"
           echo "${{ github.event.inputs.custom_router_ip }}" > "${{ github.workspace }}/custom/custom_router_ip.txt"
           echo "您设置的路由器管理地址是:${{ github.event.inputs.custom_router_ip }}"
-          # 后续步骤会将该文件映射到路由器/etc/config/custom_router_ip.txt 以便用于开机脚本99-custom.sh读取用户设置的ip
-
 
       - name: Validate PPPoE Inputs
         run: |
@@ -559,16 +560,13 @@ jobs:
             echo "❎ 未启用 luci-app-store"
           fi
 
-
       - name: Build Wireless ImmortalWrt
         run: |
           profile="${{ github.event.inputs.profile }}"
           echo "Building for profile: $profile"
           include_docker="${{ github.event.inputs.include_docker }}"
-          # 默认平台
           echo "platform=mediatek/filogic" >> $GITHUB_ENV
 
-          # 读取 ipq807x 机型文件
           ipq807x_models=$(cat model/ipq807x.txt | tr '\n' '|')
           ipq807x_models=${ipq807x_models%|}
           if [[ "$profile" =~ ^($ipq807x_models)$ ]]; then
@@ -576,7 +574,6 @@ jobs:
               case_platform="qualcommax/ipq807x"
           fi
 
-          # 读取 mt7621 机型文件
           mt7621_models=$(cat model/mt7621.txt | tr '\n' '|')
           mt7621_models=${mt7621_models%|}
           if [[ "$profile" =~ ^($mt7621_models)$ ]]; then
@@ -584,7 +581,6 @@ jobs:
               case_platform="ramips/mt7621"
           fi
 
-          # 读取 bcm53xx/generic 机型文件
           bcm53xx_models=$(cat model/bcm53xx.txt | tr '\n' '|')
           bcm53xx_models=${bcm53xx_models%|}
           if [[ "$profile" =~ ^($bcm53xx_models)$ ]]; then
@@ -592,15 +588,12 @@ jobs:
               case_platform="bcm53xx/generic"
           fi
 
-          # 判断机型
           case "$profile" in
               glinet_gl-b2200)
-                  # 虽然它是高通ipq40xx平台 但由于都是gl机型 故放在一起 找起来方便
                   tag=ipq40xx-generic-openwrt-24.10.4
                   echo "platform=ipq40xx/generic" >> $GITHUB_ENV
                   ;;
               glinet_gl-axt1800|glinet_gl-ax1800)
-                  # 虽然它是高通ipq60xx平台 但由于都是gl机型 故放在一起 找起来方便
                   tag=qualcommax-ipq60xx-snapshot
                   echo "platform=qualcommax/ipq60xx" >> $GITHUB_ENV
                   ;;
@@ -608,7 +601,6 @@ jobs:
                   tag=mediatek-mt7622-openwrt-24.10.4
                   echo "platform=mediatek/mt7622" >> $GITHUB_ENV
                   ;;
-              # 下列机型目前没有24.10 因此采用23.05.4分支来构建
               cmcc_rax3000m-emmc-ubootmod | \
               cmcc_rax3000m-nand-ubootmod | \
               cmcc_a10 | \
@@ -625,12 +617,10 @@ jobs:
                   cp ${{ github.workspace }}/mediatek-filogic/build23.sh ${{ github.workspace }}/mediatek-filogic/build24.sh
                   ;;
               *)
-                  # 如果前面匹配了 ipq807x、mt7621、bcm53xx 机型文件，则使用对应 tag
                   if [[ -n "$case_tag" ]]; then
                       tag=$case_tag
                       echo "platform=$case_platform" >> $GITHUB_ENV
                   else
-                      # 默认分支
                       tag=mediatek-filogic-openwrt-24.10.4
                   fi
                   ;;
@@ -650,7 +640,6 @@ jobs:
               -e PPPOE_ACCOUNT=${{ inputs.pppoe_account }} \
               -e PPPOE_PASSWORD=${{ inputs.pppoe_password }} \
             immortalwrt/imagebuilder:$tag /bin/bash /home/build/immortalwrt/build.sh
-          
 
       - name: Create info
         run: |
@@ -663,10 +652,12 @@ jobs:
           custom_router_ip="${{ github.event.inputs.custom_router_ip }}"
           extra_content_ip="#### 管理地址 $custom_router_ip"
           echo -e "\n $extra_content_ip" >> ${{ github.workspace }}/mediatek-filogic/info.md
-          
-          
+
       - name: Upload ImmortalWrt as release assets
         uses: softprops/action-gh-release@v2.3.0
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.event.inputs.profile }}
           name: ImmortalWrt-Wireless
